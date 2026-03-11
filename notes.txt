@@ -1,0 +1,5 @@
+Needs to be run with
+
+mjpython launch_robot.py
+
+For mac silly reasons
