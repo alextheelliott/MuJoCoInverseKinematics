@@ -1,25 +1,28 @@
-import mujoco
-import mujoco.viewer
-import numpy as np
+import collections
 import time
 import os
-import collections
+
+import numpy as np
+
+import mujoco
+import mujoco.viewer
+
+Point = collections.namedtuple('Point',['x','y','z'])
+Quaternion = collections.namedtuple('Quaternion',['w','x','y','z'])
 
 # --- CONFIGURATION ---
 MODEL_PATH = "ufactory_lite6/scene.xml"
 # Target Position: (X, Y, Z) in meters
-TARGET_XYZ = (0.4, 0.1, 0.4)
+TARGET_POINT = Point(0.4, 0.1, 0.4)
 # Target Orientation: (W, X, Y, Z) Quaternion
 # (1, 0, 0, 0) is the default orientation from the XML
-TARGET_QUAT = (0.707, 0.707, 0.0, 0.0)
-
-Target = collections.namedtuple('Target',['x','y','z','qw','qx','qy','qz'])
+TARGET_QUAT = Quaternion(0.707, 0.707, 0.0, 0.0)
 
 STEP_GAIN = 0.5
-DAMPING = 1e-2 #1e-4 default
+DAMPING = 1e-3 #1e-4 default
 # ---------------------
 
-def compute_6dof_ik(model, data, site_id, target_pos, target_quat):
+def compute_6dof_ik(model, data, site_id, target_pos: Point, target_quat: Quaternion):
     """Calculates joint velocity (dq) for a 6-DOF target pose."""
     # 1. Position Error
     current_pos = data.site_xpos[site_id]
@@ -55,6 +58,37 @@ def compute_6dof_ik(model, data, site_id, target_pos, target_quat):
 
     return dq
 
+keycodes = {
+    262: 'right',
+    263: 'left',
+    264: 'down',
+    265: 'up',
+    44: 'comma',
+    46: 'period',
+    39: 'apostrophe',
+    59: 'semicolan',
+}
+
+def key_callback(keycode):    
+    global TARGET_POINT, TARGET_QUAT
+
+    key = keycodes[keycode]
+    if (key == 'right'):
+        TARGET_POINT = Point(TARGET_POINT.x+0.02, TARGET_POINT.y, TARGET_POINT.z)
+    elif (key == 'left'):
+        TARGET_POINT = Point(TARGET_POINT.x-0.02, TARGET_POINT.y, TARGET_POINT.z)
+    elif (key == 'up'):
+        TARGET_POINT = Point(TARGET_POINT.x, TARGET_POINT.y+0.02, TARGET_POINT.z)
+    elif (key == 'down'):
+        TARGET_POINT = Point(TARGET_POINT.x, TARGET_POINT.y-0.02, TARGET_POINT.z)
+    elif (key == 'period'):
+        TARGET_POINT = Point(TARGET_POINT.x, TARGET_POINT.y, TARGET_POINT.z+0.02)
+    elif (key == 'comma'):
+        TARGET_POINT = Point(TARGET_POINT.x, TARGET_POINT.y, TARGET_POINT.z-0.02)
+
+    print(f"Moving to Position: {TARGET_POINT}")
+    print(f"Moving to Orientation: {TARGET_QUAT}")
+
 def main():
     if not os.path.exists(MODEL_PATH):
         print(f"Error: {MODEL_PATH} not found.")
@@ -69,15 +103,15 @@ def main():
     except:
         site_id = model.site('end_effector').id
 
-    with mujoco.viewer.launch_passive(model, data) as viewer:
-        print(f"Moving to Position: {TARGET_XYZ}")
+    with mujoco.viewer.launch_passive(model, data, key_callback=key_callback) as viewer:
+        print(f"Moving to Position: {TARGET_POINT}")
         print(f"Moving to Orientation: {TARGET_QUAT}")
 
         while viewer.is_running():
             step_start = time.time()
 
             # Calculate the update
-            dq = compute_6dof_ik(model, data, site_id, TARGET_XYZ, TARGET_QUAT)
+            dq = compute_6dof_ik(model, data, site_id, TARGET_POINT, TARGET_QUAT)
 
             # Apply update to the first 6 joints
             data.qpos[:6] += dq * STEP_GAIN
